@@ -9,7 +9,7 @@
 collector_name: mssql_databases
 
 # Similar to global.min_interval, but applies to the queries defined by this collector only.
-#min_interval: 0s
+min_interval: 30s
 
 metrics:
   - metric_name: mssql_connections
@@ -31,9 +31,6 @@ metrics:
       AND DB_NAME(database_id) NOT IN (N'distribution', N'master', N'msdb', N'model')
       GROUP BY DB_NAME(database_id), s.host_name, s.login_name;
 
-  #
-  # Collected from sys.dm_os_performance_counters
-  #
   - metric_name: mssql_log_growths
     type: counter
     help: 'Number of times the transaction log has been expanded, per database.'
@@ -45,120 +42,46 @@ metrics:
       FROM sys.dm_os_performance_counters WITH (NOLOCK)
       WHERE counter_name = 'Log Growths' AND instance_name <> '_Total'
 
-  - metric_name: mssql_buffer_cache_hit_ratio
-    type: gauge
-    help: 'Ratio of requests that hit the buffer cache'
-    values: [cntr_value]
-    query: |
-      SELECT cntr_value
-      FROM sys.dm_os_performance_counters
-      WHERE [counter_name] = 'Buffer cache hit ratio'
+  # - metric_name: mssql_checkpoint_pages_sec
+  #   type: gauge
+  #   help: 'Checkpoint Pages Per Second'
+  #   values: [cntr_value]
+  #   query: |
+  #     SELECT cntr_value
+  #     FROM sys.dm_os_performance_counters
+  #     WHERE [counter_name] = 'Checkpoint pages/sec'
 
-  - metric_name: mssql_checkpoint_pages_sec
-    type: gauge
-    help: 'Checkpoint Pages Per Second'
-    values: [cntr_value]
-    query: |
-      SELECT cntr_value
-      FROM sys.dm_os_performance_counters
-      WHERE [counter_name] = 'Checkpoint pages/sec'
-
-  #
-  # Collected from sys.dm_io_virtual_file_stats
-  #
-  - metric_name: mssql_io_stall_seconds
+  - metric_name: mssql_io_stall_ms
     type: counter
-    help: 'Stall time in seconds per database and I/O operation.'
+    help: 'Avg stall time in millisecond per database and I/O operation.'
     key_labels:
       - db
+      - drive
     value_label: operation
     values:
-      - read
-      - write
+      - read_latency
+      - write_latency
     query_ref: mssql_io_stall
-  - metric_name: mssql_io_stall_total_seconds
-    type: counter
-    help: 'Total stall time in seconds per database.'
-    key_labels:
-      - db
-    values:
-      - io_stall
-    query_ref: mssql_io_stall
-
-  #
-  # Collected from sys.dm_os_process_memory
-  #
-  - metric_name: mssql_resident_memory_bytes
-    type: gauge
-    help: 'SQL Server resident memory size (AKA working set).'
-    values: [resident_memory_bytes]
-    query_ref: mssql_process_memory
-
-  - metric_name: mssql_virtual_memory_bytes
-    type: gauge
-    help: 'SQL Server committed virtual memory size.'
-    values: [virtual_memory_bytes]
-    query_ref: mssql_process_memory
-
-  - metric_name: mssql_memory_utilization_percentage
-    type: gauge
-    help: 'The percentage of committed memory that is in the working set.'
-    values: [memory_utilization_percentage]
-    query_ref: mssql_process_memory
-
-  - metric_name: mssql_page_fault_count
-    type: counter
-    help: 'The number of page faults that were incurred by the SQL Server process.'
-    values: [page_fault_count]
-    query_ref: mssql_process_memory
-
-  #
-  # Collected from sys.dm_os_sys_memory
-  #
-  - metric_name: mssql_os_memory
-    type: gauge
-    help: 'OS physical memory, used and available.'
-    value_label: 'state'
-    values: [used, available]
-    query: |
-      SELECT
-        (total_physical_memory_kb - available_physical_memory_kb) * 1024 AS used,
-        available_physical_memory_kb * 1024 AS available
-      FROM sys.dm_os_sys_memory
-
-  - metric_name: mssql_os_page_file
-    type: gauge
-    help: 'OS page file, used and available.'
-    value_label: 'state'
-    values: [used, available]
-    query: |
-      SELECT
-        (total_page_file_kb - available_page_file_kb) * 1024 AS used,
-        available_page_file_kb * 1024 AS available
-      FROM sys.dm_os_sys_memory
 
 queries:
-  # Populates `mssql_io_stall` and `mssql_io_stall_total`
   - query_name: mssql_io_stall
     query: |
-      SELECT
-        cast(DB_Name(a.database_id) as varchar) AS [db],
-        sum(io_stall_read_ms) / 1000.0 AS [read],
-        sum(io_stall_write_ms) / 1000.0 AS [write],
-        sum(io_stall) / 1000.0 AS io_stall
-      FROM
-        sys.dm_io_virtual_file_stats(null, null) a
-      INNER JOIN sys.master_files b ON a.database_id = b.database_id AND a.file_id = b.file_id
-      GROUP BY a.database_id
-
-  # Populates `mssql_resident_memory_bytes`, `mssql_virtual_memory_bytes`, `mssql_memory_utilization_percentage` and
-  # `mssql_page_fault_count`.
-  - query_name: mssql_process_memory
-    query: |
-      SELECT
-        physical_memory_in_use_kb * 1024 AS resident_memory_bytes,
-        virtual_address_space_committed_kb * 1024 AS virtual_memory_bytes,
-        memory_utilization_percentage,
-        page_fault_count
-      FROM sys.dm_os_process_memory
-      
+      SELECT 
+        DB_NAME([vfs].[database_id]) db,
+        mf.type_desc as [type],
+        [io_stall_read_ms] / NULLIF([num_of_reads], 0) as [read_latency],
+        [io_stall_write_ms] / NULLIF([num_of_writes], 0) as [write_latency],
+        [num_of_bytes_read] / NULLIF([num_of_reads], 0) as [AvgBPerRead],
+        [num_of_bytes_written] / NULLIF([num_of_writes], 0) as [AvgBPerWrite],
+        LEFT([mf].[physical_name],2) [drive],
+        [vfs].[sample_ms] / 1000 / 60 / 60 / 24 as [sample_days],
+        [vfs].[num_of_reads],
+        [vfs].[num_of_writes],
+        [vfs].[size_on_disk_bytes]/1024/1024 as [size_on_disk_MB],
+        --[mf].[physical_name],
+        RIGHT([mf].[physical_name], CHARINDEX(N'\',REVERSE([mf].[physical_name]))-1) as file_name
+      FROM [sys].[dm_io_virtual_file_stats](NULL,NULL) AS vfs
+      JOIN [sys].[master_files] [mf] 
+          ON [vfs].[database_id] = [mf].[database_id] 
+          AND [vfs].[file_id] = [mf].[file_id]
+      WHERE DB_NAME([vfs].[database_id]) NOT IN (N'master', N'model');
