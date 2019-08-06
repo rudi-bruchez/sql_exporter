@@ -1,0 +1,74 @@
+# A collector defining standard metrics for Microsoft SQL Server.
+#
+# It is required that the SQL Server user has the following permissions:
+#
+#   GRANT VIEW ANY DEFINITION TO
+#   GRANT VIEW SERVER STATE TO
+#
+collector_name: mssql_essential
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+min_interval: 30s
+
+metrics:
+  #
+  # Collected from sys.dm_os_performance_counters
+  #
+  - metric_name: mssql_page_life_expectancy_seconds
+    type: gauge
+    help: 'The number of seconds a page will stay in the buffer pool.'
+    values: [cntr_value]
+    query: |
+      SELECT TOP (1) cntr_value
+      FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
+      WHERE counter_name = N'Page life expectancy'
+	    AND RTRIM(object_name) LIKE N'%:Buffer Manager';
+
+  - metric_name: mssql_buffer_cache_hit_ratio
+    type: gauge
+    help: 'Ratio of requests that hit the buffer cache'
+    values: [cntr_value]
+    query: |
+      SELECT 
+        CAST((ratio.cntr_value * 1.0 / base.cntr_value) * 100.0 AS NUMERIC(5, 2)) as [cntr_Value]
+      FROM sys.dm_os_performance_counters ratio WITH (READUNCOMMITTED)
+      JOIN sys.dm_os_performance_counters base  WITH (READUNCOMMITTED) 
+	      ON ratio.object_name = base.object_name
+      WHERE RTRIM(ratio.object_name) LIKE N'%:Buffer Manager'
+      AND ratio.counter_name = N'Buffer cache hit ratio'
+      AND base.counter_name = N'Buffer cache hit ratio base'; 
+
+  - metric_name: mssql_batch_requests
+    type: gauge
+    help: 'Number of command batches received.'
+    values: [cntr_value]
+    query: |
+      SELECT cntr_value
+      FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
+      WHERE counter_name = N'Batch Requests/sec';
+
+  - metric_name: mssql_transactions_per_second
+    type: gauge
+    help: "Transactions/sec= (Last transaction number – Previous transaction number)/Number of seconds between two readings"
+    key_labels:
+      - db
+    values: [cntr_value]
+    query: | 
+      SELECT instance_name as db, cntr_value
+      FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
+      WHERE counter_name = N'Transactions/sec'
+      AND instance_name NOT IN (
+	      N'model', N'mssqlsystemresource', N'msdb', N'_Total', N'master'
+      );
+
+  - metric_name: mssql_cache_object_count
+    type: gauge
+    help: "number of objects in the plan cache"
+    values: [cntr_value]
+    query: | 
+      SELECT cntr_value
+      FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
+      WHERE counter_name = N'cache object counts'
+      AND RTRIM(object_name) LIKE N'%:Plan Cache'
+      AND instance_name = N'_Total';
+      

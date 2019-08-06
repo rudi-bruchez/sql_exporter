@@ -1,3 +1,4 @@
+
 # A collector defining standard metrics for Microsoft SQL Server.
 #
 # It is required that the SQL Server user has the following permissions:
@@ -5,19 +6,12 @@
 #   GRANT VIEW ANY DEFINITION TO
 #   GRANT VIEW SERVER STATE TO
 #
-collector_name: mssql_standard
+collector_name: mssql_databases
 
 # Similar to global.min_interval, but applies to the queries defined by this collector only.
 #min_interval: 0s
 
 metrics:
-  # - metric_name: mssql_local_time_seconds
-    # type: gauge
-    # help: 'Local time in seconds since epoch (Unix time).'
-    # values: [unix_time]
-    # query: |
-    #   SELECT DATEDIFF(second, '19700101', GETUTCDATE()) AS unix_time
-
   - metric_name: mssql_connections
     type: gauge
     help: 'Number of active connections.'
@@ -40,51 +34,6 @@ metrics:
   #
   # Collected from sys.dm_os_performance_counters
   #
-  - metric_name: mssql_deadlocks
-    type: counter
-    help: 'Number of lock requests that resulted in a deadlock.'
-    values: [cntr_value]
-    query: |
-      SELECT cntr_value
-      FROM sys.dm_os_performance_counters WITH (NOLOCK)
-      WHERE counter_name = 'Number of Deadlocks/sec' AND instance_name = '_Total'
-
-  - metric_name: mssql_user_errors
-    type: counter
-    help: 'Number of user errors.'
-    values: [cntr_value]
-    query: |
-      SELECT cntr_value
-      FROM sys.dm_os_performance_counters WITH (NOLOCK)
-      WHERE counter_name = 'Errors/sec' AND instance_name = 'User Errors'
-
-  - metric_name: mssql_kill_connection_errors
-    type: counter
-    help: 'Number of severe errors that caused SQL Server to kill the connection.'
-    values: [cntr_value]
-    query: |
-      SELECT cntr_value
-      FROM sys.dm_os_performance_counters WITH (NOLOCK)
-      WHERE counter_name = 'Errors/sec' AND instance_name = 'Kill Connection Errors'
-
-  - metric_name: mssql_page_life_expectancy_seconds
-    type: gauge
-    help: 'The minimum number of seconds a page will stay in the buffer pool on this node without references.'
-    values: [cntr_value]
-    query: |
-      SELECT top(1) cntr_value
-      FROM sys.dm_os_performance_counters WITH (NOLOCK)
-      WHERE counter_name = 'Page life expectancy'
-
-  - metric_name: mssql_batch_requests
-    type: counter
-    help: 'Number of command batches received.'
-    values: [cntr_value]
-    query: |
-      SELECT cntr_value
-      FROM sys.dm_os_performance_counters WITH (NOLOCK)
-      WHERE counter_name = 'Batch Requests/sec'
-
   - metric_name: mssql_log_growths
     type: counter
     help: 'Number of times the transaction log has been expanded, per database.'
