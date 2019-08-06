@@ -67,9 +67,10 @@ metrics:
 
   - metric_name: mssql_database_sizes
     type: gauge
-    help: 'Avg stall time in millisecond per database and I/O operation.'
+    help: 'file size per database.'
     key_labels:
       - db
+      - type
     value_label: operation
     values:
       - size_on_disk_mb
