@@ -22,7 +22,8 @@ metrics:
       SELECT TOP (1) cntr_value
       FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
       WHERE counter_name = N'Page life expectancy'
-	    AND RTRIM(object_name) LIKE N'%:Buffer Manager';
+	    AND RTRIM(object_name) LIKE N'%:Buffer Manager'
+      OPTION (RECOMPILE);
 
   - metric_name: mssql_buffer_cache_hit_ratio
     type: gauge
@@ -36,7 +37,8 @@ metrics:
 	      ON ratio.object_name = base.object_name
       WHERE RTRIM(ratio.object_name) LIKE N'%:Buffer Manager'
       AND ratio.counter_name = N'Buffer cache hit ratio'
-      AND base.counter_name = N'Buffer cache hit ratio base'; 
+      AND base.counter_name = N'Buffer cache hit ratio base' 
+      OPTION (RECOMPILE);
 
   - metric_name: mssql_batch_requests
     type: gauge
@@ -45,10 +47,11 @@ metrics:
     query: |
       SELECT cntr_value
       FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
-      WHERE counter_name = N'Batch Requests/sec';
+      WHERE counter_name = N'Batch Requests/sec'
+      OPTION (RECOMPILE);
 
   - metric_name: mssql_transactions_per_second
-    type: gauge
+    type: counter
     help: "Transactions/sec= (Last transaction number – Previous transaction number)/Number of seconds between two readings"
     key_labels:
       - db
@@ -59,7 +62,8 @@ metrics:
       WHERE counter_name = N'Transactions/sec'
       AND instance_name NOT IN (
 	      N'model', N'mssqlsystemresource', N'msdb', N'_Total', N'master'
-      );
+      )
+      OPTION (RECOMPILE);
 
   - metric_name: mssql_cache_object_count
     type: gauge
@@ -70,5 +74,6 @@ metrics:
       FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
       WHERE counter_name = N'cache object counts'
       AND RTRIM(object_name) LIKE N'%:Plan Cache'
-      AND instance_name = N'_Total';
+      AND instance_name = N'_Total'
+      OPTION (RECOMPILE);
       

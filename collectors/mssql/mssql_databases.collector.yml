@@ -29,7 +29,8 @@ metrics:
       FROM sys.dm_exec_sessions s WITH (READUNCOMMITTED)
       WHERE s.is_user_process = 1
       AND DB_NAME(database_id) NOT IN (N'distribution', N'master', N'msdb', N'model')
-      GROUP BY DB_NAME(database_id), s.host_name, s.login_name;
+      GROUP BY DB_NAME(database_id), s.host_name, s.login_name
+      OPTION (RECOMPILE);
 
   - metric_name: mssql_log_growths
     type: counter
@@ -39,8 +40,9 @@ metrics:
     values: [cntr_value]
     query: |
       SELECT rtrim(instance_name) AS db, cntr_value
-      FROM sys.dm_os_performance_counters WITH (NOLOCK)
+      FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
       WHERE counter_name = 'Log Growths' AND instance_name <> '_Total'
+      OPTION (RECOMPILE);
 
   # - metric_name: mssql_checkpoint_pages_sec
   #   type: gauge
@@ -52,7 +54,7 @@ metrics:
   #     WHERE [counter_name] = 'Checkpoint pages/sec'
 
   - metric_name: mssql_io_stall_ms
-    type: counter
+    type: gauge
     help: 'Avg stall time in millisecond per database and I/O operation.'
     key_labels:
       - db
@@ -61,10 +63,20 @@ metrics:
     values:
       - read_latency
       - write_latency
-    query_ref: mssql_io_stall
+    query_ref: mssql_io_metrics
+
+  - metric_name: mssql_database_sizes
+    type: gauge
+    help: 'Avg stall time in millisecond per database and I/O operation.'
+    key_labels:
+      - db
+    value_label: operation
+    values:
+      - size_on_disk_mb
+    query_ref: mssql_io_metrics
 
 queries:
-  - query_name: mssql_io_stall
+  - query_name: mssql_io_metrics
     query: |
       SELECT 
         DB_NAME([vfs].[database_id]) db,
@@ -77,11 +89,12 @@ queries:
         [vfs].[sample_ms] / 1000 / 60 / 60 / 24 as [sample_days],
         [vfs].[num_of_reads],
         [vfs].[num_of_writes],
-        [vfs].[size_on_disk_bytes]/1024/1024 as [size_on_disk_MB],
+        [vfs].[size_on_disk_bytes]/1024/1024 as [size_on_disk_mb],
         --[mf].[physical_name],
         RIGHT([mf].[physical_name], CHARINDEX(N'\',REVERSE([mf].[physical_name]))-1) as file_name
       FROM [sys].[dm_io_virtual_file_stats](NULL,NULL) AS vfs
       JOIN [sys].[master_files] [mf] 
           ON [vfs].[database_id] = [mf].[database_id] 
           AND [vfs].[file_id] = [mf].[file_id]
-      WHERE DB_NAME([vfs].[database_id]) NOT IN (N'master', N'model');
+      WHERE DB_NAME([vfs].[database_id]) NOT IN (N'master', N'model')
+      OPTION (RECOMPILE);
