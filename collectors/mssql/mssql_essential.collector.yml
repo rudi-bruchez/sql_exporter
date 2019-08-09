@@ -21,8 +21,8 @@ metrics:
     query: |
       SELECT TOP (1) cntr_value
       FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
-      WHERE counter_name = N'Page life expectancy'
-	    AND RTRIM(object_name) LIKE N'%:Buffer Manager'
+      WHERE counter_name = N'Page life expectancy' 
+        AND RTRIM(object_name) LIKE N'%:Buffer Manager'
       OPTION (RECOMPILE);
 
   - metric_name: mssql_buffer_cache_hit_ratio
@@ -31,10 +31,10 @@ metrics:
     values: [cntr_value]
     query: |
       SELECT 
-        CAST((ratio.cntr_value * 1.0 / base.cntr_value) * 100.0 AS NUMERIC(5, 2)) as [cntr_Value]
+        CAST((ratio.cntr_value * 1.0 / base.cntr_value) * 100.0 AS NUMERIC(5, 2)) as [cntr_value]
       FROM sys.dm_os_performance_counters ratio WITH (READUNCOMMITTED)
-      JOIN sys.dm_os_performance_counters base  WITH (READUNCOMMITTED) 
-	      ON ratio.object_name = base.object_name
+      JOIN sys.dm_os_performance_counters base  WITH (READUNCOMMITTED)
+        ON ratio.object_name = base.object_name
       WHERE RTRIM(ratio.object_name) LIKE N'%:Buffer Manager'
       AND ratio.counter_name = N'Buffer cache hit ratio'
       AND base.counter_name = N'Buffer cache hit ratio base' 
@@ -60,8 +60,8 @@ metrics:
       SELECT instance_name as db, cntr_value
       FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
       WHERE counter_name = N'Transactions/sec'
-      AND instance_name NOT IN (
-	      N'model', N'mssqlsystemresource', N'msdb', N'_Total', N'master'
+      AND instance_name NOT IN ( 
+        N'model', N'mssqlsystemresource', N'msdb', N'_Total', N'master'
       )
       OPTION (RECOMPILE);
 
