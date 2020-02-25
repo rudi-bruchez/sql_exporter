@@ -76,6 +76,15 @@ metrics:
       - size_on_disk_mb
     query_ref: mssql_io_metrics
 
+  - metric_name: mssql_percent_log_used
+    type: gauge
+    help: 'percent of transaction log used per database.'
+    key_labels:
+      - db
+    values:
+      - percent_log_used
+    query_ref: mssql_io_metrics
+
 queries:
   - query_name: mssql_io_metrics
     query: |
@@ -98,4 +107,46 @@ queries:
           ON [vfs].[database_id] = [mf].[database_id] 
           AND [vfs].[file_id] = [mf].[file_id]
       WHERE DB_NAME([vfs].[database_id]) NOT IN (N'master', N'model')
-      OPTION (RECOMPILE);
+      OPTION (RECOMPILE, MAXDOP 1);
+
+  - query_name: mssql_db_sizes
+    query: |
+      ;WITH cte AS (
+        SELECT instance_name as db, counter_name, cntr_value
+        FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
+        WHERE object_name = 'SQLServer:Databases'
+        AND counter_name IN(N'Data File(s) Size (KB)', 
+          N'Log File(s) Size (KB)', N'Log File(s) Used Size (KB)',
+          N'Percent Log Used', N'Log Growths')
+        AND instance_name NOT IN ( 
+          N'model', N'mssqlsystemresource', N'msdb', N'_Total', N'master'
+        )
+      )
+      SELECT db, 
+        [Data File(s) Size (KB)] as data_file_size_kb, 
+        [Log File(s) Size (KB)] as log_file_size_kb, 
+        [Log File(s) Used Size (KB)] as log_file_used_kb,
+        [Percent Log Used] as percent_log_used, 
+        [Log Growths] as log_growths
+      FROM 
+      (
+        SELECT db, counter_name, cntr_value
+        FROM cte
+      ) as t
+      PIVOT
+      (
+        SUM(cntr_value)
+        FOR counter_name IN([Data File(s) Size (KB)], 
+          [Log File(s) Size (KB)], [Log File(s) Used Size (KB)],
+          [Percent Log Used], [Log Growths])
+      ) as pv
+      OPTION (RECOMPILE, MAXDOP 1);      SELECT instance_name as db, counter_name, cntr_value
+            FROM sys.dm_os_performance_counters WITH (READUNCOMMITTED)
+            WHERE object_name = 'SQLServer:Databases'
+            AND counter_name IN(N'Data File(s) Size (KB)', 
+              N'Log File(s) Size (KB)', N'Log File(s) Used Size (KB)',
+              N'Percent Log Used', N'Log Growths')
+            AND instance_name NOT IN ( 
+              N'model', N'mssqlsystemresource', N'msdb', N'_Total', N'master'
+            )
+            OPTION (RECOMPILE, MAXDOP 1);
