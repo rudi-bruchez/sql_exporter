@@ -83,7 +83,7 @@ metrics:
       - db
     values:
       - percent_log_used
-    query_ref: mssql_io_metrics
+    query_ref: mssql_db_sizes
 
 queries:
   - query_name: mssql_io_metrics
