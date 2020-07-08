@@ -140,7 +140,6 @@ queries:
        ,rs.redo_queue_size
        ,rs.redo_rate
        ,DATEDIFF(SECOND, rs.last_commit_time, rs.last_sent_time) AS commit_lag_sec
-       ,rs.secondary_lag_seconds as secondary_lag_sec
       FROM sys.dm_hadr_database_replica_states rs WITH (READUNCOMMITTED)
       JOIN sys.availability_groups g WITH (READUNCOMMITTED) ON rs.group_id = g.group_id
       JOIN sys.availability_replicas ar WITH (READUNCOMMITTED) ON rs.replica_id = ar.replica_id
