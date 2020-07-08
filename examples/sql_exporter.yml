@@ -18,7 +18,7 @@ target:
   data_source_name: 'sqlserver://prom_user:prom_password@dbserver1.example.com:1433'
 
   # Collectors (referenced by name) to execute on the target.
-  collectors: [mssql_standard]
+  collectors: [mssql_standard, mssql_alwayson]
 
 # Collector files specifies a list of globs. One collector definition is read from each matching file.
 collector_files: 

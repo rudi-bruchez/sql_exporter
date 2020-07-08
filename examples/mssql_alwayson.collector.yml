@@ -1,0 +1,177 @@
+# A collector defining metrics for Microsoft SQL Server AlwaysOn (High Availability) monitoring.
+#
+# It is required that the SQL Server user has the following permissions:
+#
+#   GRANT VIEW ANY DEFINITION TO
+#   GRANT VIEW SERVER STATE TO
+#
+collector_name: mssql_alwayson
+
+# Similar to global.min_interval, but applies to the queries defined by this collector only.
+#min_interval: 0s
+
+metrics:
+  #
+  # Collected from sys.dm_io_virtual_file_stats
+  #
+  - metric_name: mssql_hadr_log_send_queue_size_kb
+    type: gauge
+    help: 'Amount of log records of the primary database that has not been sent to the secondary databases, in kilobytes (KB).'
+    key_labels:
+      - AG
+      - Replica
+      - db
+    values: [log_send_queue_size]
+    query_ref: mssql_hadr_database_replica_states
+
+  - metric_name: mssql_hadr_log_send_rate_kb_s
+    type: gauge
+    help: 'Log send rate to the secondary, in kilobytes (KB) per second.'
+    key_labels:
+      - AG
+      - Replica
+      - db
+    values: [log_send_rate]
+    query_ref: mssql_hadr_database_replica_states
+
+  - metric_name: mssql_hadr_redo_queue_size_kb
+    type: gauge
+    help: 'Amount of log records in the log files of the secondary replica that has not yet been redone, in kilobytes (KB).'
+    key_labels:
+      - AG
+      - Replica
+      - db
+    values: [redo_queue_size]
+    query_ref: mssql_hadr_database_replica_states
+
+  - metric_name: mssql_hadr_redo_rate_kbs
+    type: gauge
+    help: 'Average Rate at which the log records are being redone on a given secondary database, in kilobytes (KB)/second.'
+    key_labels:
+      - AG
+      - Replica
+      - db
+    values: [redo_rate]
+    query_ref: mssql_hadr_database_replica_states
+
+  - metric_name: mssql_hadr_commit_lag_sec
+    type: gauge
+    help: 'Difference between last_commit_time and last_sent_time is seconds.'
+    key_labels:
+      - AG
+      - Replica
+      - db
+    values: [commit_lag_sec]
+    query_ref: mssql_hadr_database_replica_states
+
+  - metric_name: mssql_hadr_flow_control_delay
+    type: counter
+    help: 'Duration spent in database flow control wait.'
+    key_labels:
+      - db
+    values: [flow_control_delay]
+    query_ref: mssql_hadr_perf_counters
+
+  - metric_name: mssql_hadr_flow_controls_per_sec
+    type: gauge
+    help: 'The number of database flow control per sec.'
+    key_labels:
+      - db
+    values: [flow_controls_sec]
+    query_ref: mssql_hadr_perf_counters
+  
+  - metric_name: mssql_hadr_group_commit_time_ms
+    type: counter
+    help: 'Number of milliseconds all transactions group commit waited.'
+    key_labels:
+      - db
+    values: [group_commit_time]
+    query_ref: mssql_hadr_perf_counters
+
+  - metric_name: mssql_hadr_group_commits
+    type: counter
+    help: 'Number of times transactions waited for group commit.'
+    key_labels:
+      - db
+    values: [group_commits_sec]
+    query_ref: mssql_hadr_perf_counters
+
+  - metric_name: mssql_hadr_write_transactions
+    type: counter
+    help: 'Number of transactions that wrote to the mirrored database and waited for the log to be sent to the mirror in order to commit.'
+    key_labels:
+      - db
+    values: [write_transactions_sec]
+    query_ref: mssql_hadr_perf_counters
+
+  - metric_name: mssql_hadr_redone_bytes_sec
+    type: counter
+    help: 'Number of bytes redone.'
+    key_labels:
+      - db
+    values: [redone_bytes_sec]
+    query_ref: mssql_hadr_perf_counters
+
+  - metric_name: mssql_hadr_redones_sec
+    type: counter
+    help: 'Number of redones.'
+    key_labels:
+      - db
+    values: [redones_sec]
+    query_ref: mssql_hadr_perf_counters
+
+  - metric_name: mssql_hadr_transaction_delay
+    type: counter
+    help: 'Delay in waiting for unterminated commit acknowledgment for all the current transactions, in milliseconds.'
+    key_labels:
+      - db
+    values: [transaction_delay]
+    query_ref: mssql_hadr_perf_counters
+
+queries:
+  - query_name: mssql_hadr_database_replica_states
+    query: |
+      SELECT 
+        g.name as AG
+       ,ar.replica_server_name as [Replica]
+       ,DB_NAME(rs.database_id) AS [db]
+       ,rs.log_send_queue_size
+       ,rs.log_send_rate
+       ,rs.redo_queue_size
+       ,rs.redo_rate
+       ,DATEDIFF(SECOND, rs.last_commit_time, rs.last_sent_time) AS commit_lag_sec
+       ,rs.secondary_lag_seconds as secondary_lag_sec
+      FROM sys.dm_hadr_database_replica_states rs WITH (READUNCOMMITTED)
+      JOIN sys.availability_groups g WITH (READUNCOMMITTED) ON rs.group_id = g.group_id
+      JOIN sys.availability_replicas ar WITH (READUNCOMMITTED) ON rs.replica_id = ar.replica_id
+      WHERE rs.is_primary_replica = 0
+      OPTION (RECOMPILE)
+
+  - query_name: mssql_hadr_perf_counters
+    query: |
+      SELECT 
+        RTRIM(instance_name) AS [db],
+        [Database Flow Control Delay] AS flow_control_delay, 
+        [Database Flow Controls/sec] AS flow_controls_sec, 
+        [Group Commit Time] AS group_commit_time, 
+        [Group Commits/Sec] AS group_commits_sec, 
+        [Mirrored Write Transactions/sec] as write_transactions_sec, 
+        [Redone Bytes/sec] AS redone_bytes_sec, 
+        [Redones/sec] AS redones_sec, 
+        [Transaction Delay] AS transaction_delay
+      FROM
+      (
+      SELECT dopc.counter_name
+          ,dopc.instance_name
+          ,dopc.cntr_value AS [value]
+      FROM sys.dm_os_performance_counters dopc WITH (READUNCOMMITTED)
+      WHERE dopc.object_name LIKE '%:Database Replica%'
+      AND dopc.instance_name <> '_Total'
+      AND dopc.counter_name IN ('Database Flow Control Delay', 'Database Flow Controls/sec', 'Group Commit Time', 'Group Commits/Sec', 'Mirrored Write Transactions/sec', 'Redone Bytes/sec', 'Redones/sec', 'Transaction Delay')
+      ) AS t
+      PIVOT (
+        MIN([value])
+        FOR counter_name IN ([Database Flow Control Delay], [Database Flow Controls/sec], [Group Commit Time], [Group Commits/Sec], [Mirrored Write Transactions/sec], [Redone Bytes/sec], [Redones/sec], [Transaction Delay]) 
+      ) p
+      OPTION (RECOMPILE)
+  
